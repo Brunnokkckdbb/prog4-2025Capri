@@ -1,58 +1,81 @@
 import { Libro } from "./Libro";
 
-class Prestamo {
-  constructor(public libro: Libro, public vencimiento: Date) {}
-}
+const FINE_PER_DAY = 50;
+class Socio {
+  public readonly id: number;
+  public readonly nombre: string;
+  public readonly apellido: string;
+  private librosPrestados: Libro[] = [];
+  private fechaPrestamo: { [key: string]: Date } = {};
+  private historialLectura: Libro[] = [];
+  private duracionesPrestamo: { [key: string]: number } = {};
+  private multaPendiente: number = 0;
 
-/** Duracion en dias de un prestamo */
-type Duracion = number;
-
-export class Socio {
-  private prestamos: Prestamo[] = [];
-
-  constructor(
-    private _id: number,
-    private _nombre: string,
-    private _apellido: string
-  ) {}
-
-  get id() {
-    return this._id;
+  constructor(id: number, nombre: string, apellido: string) {
+    this.id = id;
+    this.nombre = nombre;
+    this.apellido = apellido;
   }
 
-  get nombre() {
-    return this._nombre;
+  getHistorialLectura(): Libro[] {
+    return [...this.historialLectura]; // Devolver una copia para proteger el estado interno
   }
 
-  get apellido() {
-    return this._apellido;
+  getLibrosPrestados(): Libro[] {
+    return [...this.librosPrestados]; // Devolver una copia
   }
 
-  get nombreCompleto() {
-    return `${this.nombre} ${this.apellido}`;
-  }
+  calcularMulta(libro: Libro, fechaDevolucion: Date = new Date()): number {
+    const fechaPrestamoLibro = this.fechaPrestamo[libro.getIsbn()];
+    const duracionPrestamo = this.duracionesPrestamo[libro.getIsbn()];
+    if (!fechaPrestamoLibro || duracionPrestamo === undefined) {
+      return 0;
+    }
+    const diff = fechaDevolucion.getTime() - fechaPrestamoLibro.getTime();
+    const diffDays = Math.ceil(diff / (1000 * 3600 * 24));
 
-  retirar(libro: Libro, duracion: Duracion) {
-    const vencimiento = new Date();
-    vencimiento.setDate(vencimiento.getDate() + duracion);
-    this.prestamos.push(new Prestamo(libro, vencimiento));
-  }
-
-  devolver(libro: Libro) {
-    const prestamo = this.tienePrestadoLibro(libro);
-
-    if (!prestamo) {
-      throw new Error("No esta prestado");
+    if (diffDays > duracionPrestamo) {
+      const diasRetraso = diffDays - duracionPrestamo;
+      return diasRetraso * FINE_PER_DAY;
     }
 
-    const indice = this.prestamos.indexOf(prestamo);
-    // Eliminar el elemento en el indice
-    this.prestamos.splice(indice, 1);
-
-    return prestamo;
+    return 0;
   }
 
-  tienePrestadoLibro(libro: Libro): Prestamo | null {
-    return this.prestamos.find((p) => p.libro === libro) ?? null;
+
+  prestarLibro(libro: Libro, duracion: number) {
+    this.librosPrestados.push(libro);
+    libro.estaDisponible = false;
+    this.duracionesPrestamo[libro.getIsbn()] = duracion;
+    this.fechaPrestamo[libro.getIsbn()] = new Date();
+  }
+
+  devolverLibro(libro: Libro, fechaDevolucion?: Date) {
+    const index = this.librosPrestados.indexOf(libro);
+    if (index > -1) {
+      const multa = this.calcularMulta(libro, fechaDevolucion);
+      this.multaPendiente += multa;
+      this.librosPrestados.splice(index, 1);
+      // La biblioteca se encargará del estado del libro.
+      delete this.duracionesPrestamo[libro.getIsbn()];
+      delete this.fechaPrestamo[libro.getIsbn()];
+      this.historialLectura.push(libro);
+
+    } else {
+
+      throw new Error(
+        `El socio ${this.nombre} ${this.apellido} no tiene el libro "${libro.getTitulo()}" prestado.`
+      );
+    }
+  }
+
+  tieneMulta(): boolean {
+    return this.multaPendiente > 0;
+  }
+
+  pagarMulta() {
+    this.multaPendiente = 0;
   }
 }
+
+export { Socio };
